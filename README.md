@@ -4,36 +4,54 @@ A small, dependency-free visual API tester. Pick a method, enter a URL, set
 your headers / auth / body, hit **Send**, and see the raw JSON response —
 status, timing, size, response headers, and a syntax-highlighted body.
 
-It ships with a built-in local CORS proxy, so it works against APIs that do
-**not** send CORS headers (like the Prestmit Partner API) directly from the
-browser.
+It ships with a built-in CORS proxy (both as a Vercel serverless function and a
+local Python script), so it works against APIs that do **not** send CORS headers
+(like the Prestmit Partner API) directly from the browser.
 
-## One-command run
+> This is **not** a React/Next.js app — it is a single self-contained HTML file
+> (`index.html`) plus a tiny proxy. There is no build step.
+
+## Deploy to Vercel (recommended)
+
+1. Push this repo to GitHub (it already lives at
+   `richdev2022/qapro`).
+2. In Vercel, **New Project → Import** the repo. Vercel auto-detects:
+   - `index.html` → served as the static UI at `/`
+   - `api/proxy.mjs` → a serverless function at `/api/proxy`
+3. Deploy (no environment variables, no build command needed).
+4. Open the deployment URL. Click **Load example**, then **Send**.
+
+The app auto-enables the **Same-origin** proxy preset when opened over
+`http`/`https`, so requests to `/api/proxy?url=<target>` are same-origin
+(no CORS preflight) and the serverless function forwards your headers —
+including `API-KEY` — intact to the target.
+
+## Run locally
 
 ```bash
-python3 cors_proxy.py
+python3 cors_proxy.py        # serves UI + proxy on http://localhost:8787
+python3 cors_proxy.py 9000   # custom port
 ```
 
-Then open <http://localhost:8787/> in your browser. The proxy serves the tester
-UI at `/`, and the tester's proxy requests go back to the same origin
-(`/?url=<target>`) — so there is **no CORS preflight at all**. Enable the
-**CORS / Proxy** toggle in the app (Local proxy is pre-selected) and press
-**Send**.
+Open <http://localhost:8787/>. The proxy serves the UI at `/` and also answers
+`/api/proxy?url=<target>` (same contract as the deployed function), so the
+**Same-origin** preset works identically to the Vercel deployment.
 
-Custom port:
-
-```bash
-python3 cors_proxy.py 9000
-```
+Opening `index.html` directly via `file://` also works for the UI, but the
+proxy must then be reached at an absolute URL — run `cors_proxy.py` and pick the
+**Local proxy (file://)** preset.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `api-tester.html` | The tester UI — single self-contained HTML file (inline CSS + JS, no build step). Can also be opened directly via `file://`. |
-| `cors_proxy.py` | Zero-dependency (Python stdlib) local CORS proxy. Serves the UI at `/` and forwards browser requests to any target at `/?url=<encoded target>`. |
+| `index.html` | The tester UI — single self-contained HTML file (inline CSS + JS, no build step). Served at `/` by Vercel and by the local proxy. |
+| `api/proxy.mjs` | Vercel serverless function (Node, Web-standard `fetch` handler, no deps). Forwards `/api/proxy?url=<target>` to the target with method/headers/body intact, returns the response with CORS headers. |
+| `cors_proxy.py` | Zero-dependency (Python stdlib) local CORS proxy. Serves the UI at `/` and forwards `?url=<target>` requests — the local counterpart of `api/proxy.mjs`. |
+| `vercel.json` | Sets the function `maxDuration` (30s) and memory. |
 
-No `requirements.txt` — only the Python 3 standard library is used.
+No `requirements.txt`, no `package.json` — only the Python 3 stdlib and Node's
+built-in `fetch` are used.
 
 ## Features
 
@@ -56,15 +74,15 @@ No `requirements.txt` — only the Python 3 standard library is used.
 
 ## Example: Prestmit "Fetch Buyable Gift Cards"
 
-1. `python3 cors_proxy.py` and open <http://localhost:8787/>.
+1. Open the deployed URL (or `http://localhost:8787/` locally).
 2. Click **Load example** (top bar). This fills in:
    - Method: `GET`
    - URL: `https://dev-api.prestmit.io/partners/v1/giftcard-trade/buy/fetch-buyable-giftcards`
    - Auth: *API Key*, header `API-KEY`, value `key_dev_…` (sandbox key)
    - Params: `perPage=10`, `page=1`
    - Header: `Accept: application/json`
-3. Enable the **CORS / Proxy** toggle (Local proxy pre-selected).
-4. **Send** → you get a `200 OK` with the paginated gift-card JSON.
+3. The **CORS / Proxy** toggle is auto-enabled (Same-origin preset). Press **Send**
+   → you get a `200 OK` with the paginated gift-card JSON.
 
 > A `key_dev_…` sandbox key only works against `dev-api.prestmit.io`; a live key
 > only against `api.prestmit.io`. Use the **Environment** chips to swap.
@@ -73,27 +91,20 @@ No `requirements.txt` — only the Python 3 standard library is used.
 
 Browsers enforce CORS. Most APIs (Prestmit included) do not send
 `Access-Control-Allow-Origin`, so a direct browser `fetch` to them is blocked.
-The local proxy in this repo forwards your request verbatim — including custom
-headers like `API-KEY` — and returns the response with
-`Access-Control-Allow-Origin: *`, so the browser can read it.
+The proxy forwards your request verbatim — including custom headers like
+`API-KEY` — and returns the response with `Access-Control-Allow-Origin: *`, so
+the browser can read it.
 
-Two public third-party proxies (`corsproxy.io`, `allorigins.win`) are also
-listed in the app, but **they are not recommended for authenticated calls** —
-they typically strip custom request headers, so authenticated APIs return
-`401` through them.
+Two public third-party proxies (`corsproxy.io`, `allorigins.win`) are also listed
+in the app, but **they are not recommended for authenticated calls** — they
+typically strip custom request headers, so authenticated APIs return `401`
+through them.
 
 ## Security notes
 
-- The proxy binds to `127.0.0.1` only — it is reachable solely from your machine.
-- It logs each forwarded request line (method + path) but **never** logs header
-  values or request bodies.
-- Your API key is forwarded only to the exact target URL you enter.
-- For sensitive keys, prefer running this local proxy over any third-party proxy.
-
-## Tested against
-
-Prestmit Partner API — `GET /giftcard-trade/buy/fetch-buyable-giftcards` on the
-sandbox host, with 13 checks covering auth, pagination (`page` / `perPage`),
-the `currencyCode` filter, and response-schema conformance. See the
-`download/prestmit_api_test_report.md` artifact in the originating workspace for
-the full report.
+- The local proxy binds to `127.0.0.1` only — reachable solely from your machine.
+- The Vercel function is public (anyone with the URL can use it as a CORS proxy),
+  but forwards your headers only to the exact target URL you specify and never
+  logs header values or request bodies.
+- For sensitive keys, prefer the local proxy or a privately-deployed copy of the
+  Vercel function over any third-party proxy.

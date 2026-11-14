@@ -4,13 +4,17 @@ cors_proxy.py — a tiny zero-dependency CORS proxy AND UI server for the
 API Tester web app.
 
 Run it once and open http://localhost:8787/ in a browser — the tester UI
-(api-tester.html) is served from the same process, so enabling the "Local
-proxy" toggle makes the browser's requests same-origin (no CORS preflight at
-all). Any request the browser sends to `/?url=<target>` is forwarded to the
-real API with its method, headers and body intact, and the response is
-returned with `Access-Control-Allow-Origin: *`. This is what lets the visual
-tester show live responses from APIs (like Prestmit) that do not send CORS
-headers themselves.
+(index.html) is served from the same process, so the browser's proxy requests
+to /api/proxy (or /?url=) are same-origin (no CORS preflight at all). Any
+request the browser sends with `?url=<target>` is forwarded to the real API
+with its method, headers and body intact, and the response is returned with
+`Access-Control-Allow-Origin: *`. This is what lets the visual tester show
+live responses from APIs (like Prestmit) that do not send CORS headers
+themselves.
+
+This is the local-development counterpart of the deployed `api/proxy.mjs`
+Vercel function; both expose the same `?url=<target>` contract so the UI works
+identically locally and on Vercel.
 
 Usage:
     python3 cors_proxy.py            # serves UI + proxy on http://localhost:8787
@@ -98,8 +102,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # one-command launch: `python3 cors_proxy.py` then open
             # http://localhost:<PORT>/ in a browser. When the UI is served from
             # here, its proxy requests back to this same origin are same-origin
-            # (no CORS preflight needed at all).
-            if self._serve_static("api-tester.html", "text/html; charset=utf-8") is not None:
+            # (no CORS preflight needed at all). The /api/proxy path the
+            # deployed (Vercel) app uses also works here, since this handler
+            # reads the ?url= query and ignores the path.
+            if self._serve_static("index.html", "text/html; charset=utf-8") is not None:
                 return
             # Fall back to a tiny landing page if the HTML file is missing.
             self.send_response(200)

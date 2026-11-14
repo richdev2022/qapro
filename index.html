@@ -235,18 +235,21 @@
         <div id="proxyConfig" style="display:none;margin-top:10px">
           <label>Proxy preset</label>
           <div class="env-presets" style="margin:6px 0 10px">
-            <button class="env-chip proxy-preset active" data-proxy="http://localhost:8787/?url={url}">Local proxy<br><span style="font-size:10px;color:var(--text-faint)">run cors_proxy.py</span></button>
+            <button class="env-chip proxy-preset" data-proxy="/api/proxy?url={url}">Same-origin<br><span style="font-size:10px;color:var(--text-faint)">Vercel &amp; local proxy</span></button>
+            <button class="env-chip proxy-preset" data-proxy="http://localhost:8787/?url={url}">Local proxy (file://)<br><span style="font-size:10px;color:var(--text-faint)">run cors_proxy.py</span></button>
             <button class="env-chip proxy-preset" data-proxy="https://corsproxy.io/?url={url}">corsproxy.io<br><span style="font-size:10px;color:var(--text-faint)">third-party, may strip headers</span></button>
             <button class="env-chip proxy-preset" data-proxy="https://api.allorigins.win/raw?url={url}">allorigins.win<br><span style="font-size:10px;color:var(--text-faint)">third-party</span></button>
           </div>
           <div class="field">
             <label>Proxy URL pattern (use <code>{url}</code> as placeholder)</label>
-            <input id="proxyUrl" value="http://localhost:8787/?url={url}" spellcheck="false" style="font-family:var(--mono);font-size:12px">
+            <input id="proxyUrl" value="/api/proxy?url={url}" spellcheck="false" style="font-family:var(--mono);font-size:12px">
           </div>
           <div class="warn" style="margin-top:8px">
-            <strong>Recommended:</strong> run the bundled local proxy once — it forwards your headers (including API keys) intact and only on your machine:
-            <code style="display:block;margin-top:6px;padding:8px;background:#0a0c11;border-radius:6px">python3 cors_proxy.py</code>
-            Then keep <strong>Local proxy</strong> selected above. The third-party presets are unauthenticated proxies that often strip custom headers like <code>API-KEY</code>, so authenticated APIs (Prestmit included) will return 401 through them.
+            <strong>On Vercel / when served by the local proxy:</strong> keep <strong>Same-origin</strong> selected — the request goes to <code>/api/proxy</code> on the same host, which forwards your headers (including API keys) intact to the target. This is auto-enabled when the page is opened over http/https.
+            <br><br>
+            <strong>Opening the HTML file directly (file://)?</strong> run <code>python3 cors_proxy.py</code> and pick <strong>Local proxy (file://)</strong>.
+            <br><br>
+            The third-party presets are unauthenticated proxies that often strip custom headers like <code>API-KEY</code>, so authenticated APIs (Prestmit included) return 401 through them.
           </div>
         </div>
       </div>
@@ -450,10 +453,10 @@ async function send(){
   // For non-simple requests the browser does a CORS preflight; we cannot bypass.
   // If proxy is on, route through it.
   if(state.proxyOn){
-    const pat = $("proxyUrl").value || "https://corsproxy.io/?url={url}";
+    const pat = $("proxyUrl").value || "/api/proxy?url={url}";
     fetchUrl = pat.replace("{url}", encodeURIComponent(req.url));
-    // corsproxy.io forwards headers; some proxies need headers as query params.
-    // We keep fetchOpts.headers; most public proxies forward them.
+    // Same-origin /api/proxy (Vercel function or local cors_proxy.py) forwards
+    // all headers intact. Third-party proxies may strip custom headers.
   }
 
   const t0 = performance.now();
@@ -643,6 +646,26 @@ document.querySelectorAll(".proxy-preset").forEach(c=>c.onclick=()=>{
   $("proxyUrl").value = c.dataset.proxy;
 });
 
+/* Auto-configure the proxy based on how the page was opened.
+   - http/https (deployed on Vercel, or served by the local cors_proxy.py):
+     enable the proxy and use the same-origin /api/proxy endpoint, so requests
+     to non-CORS APIs work out of the box.
+   - file:// (HTML opened directly): leave the proxy off by default; the user
+     runs `python3 cors_proxy.py` and picks the Local-proxy preset. */
+function autoConfigureProxy(){
+  const deployed = location.protocol==="http:" || location.protocol==="https:";
+  const preset = deployed ? "/api/proxy?url={url}" : "http://localhost:8787/?url={url}";
+  document.querySelectorAll(".proxy-preset").forEach(c=>{
+    c.classList.toggle("active", c.dataset.proxy===preset);
+  });
+  $("proxyUrl").value = preset;
+  if(deployed){
+    state.proxyOn = true;
+    $("proxySwitch").classList.add("on");
+    $("proxyConfig").style.display = "block";
+  }
+}
+
 /* ---------- Wiring ---------- */
 document.querySelectorAll(".kv-add").forEach(b=>b.onclick=()=>addKV(b.dataset.target));
 document.querySelectorAll('input[name="auth"]').forEach(r=>r.onchange=renderAuth);
@@ -660,6 +683,7 @@ renderKV($("queryParams"), stateParams);
 renderKV($("headers"), stateHeaders);
 renderHistory();
 loadExample();
+autoConfigureProxy();
 </script>
 </body>
 </html>
