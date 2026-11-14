@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Tester — Prestmit &amp; any REST endpoint</title>
+<style>
+  :root{
+    --bg:#0f1115; --bg-2:#161a22; --bg-3:#1d2330; --bg-4:#262d3d;
+    --border:#2a3142; --border-2:#374056;
+    --text:#e6e9ef; --text-dim:#9aa3b2; --text-faint:#6b7384;
+    --accent:#5b8def; --accent-2:#7c5cef;
+    --green:#3ecf8e; --orange:#f5a623; --red:#ff5c5c; --blue:#4a9eff; --purple:#a78bfa; --yellow:#e6c07b;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono','Fira Code',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:13px;line-height:1.5;overflow:hidden}
+  button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  input,select,textarea{font-family:inherit;font-size:inherit;color:var(--text);background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,141,239,.15)}
+  textarea{resize:vertical;font-family:var(--mono);font-size:12px}
+  label{color:var(--text-dim);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+
+  /* ---------- Layout ---------- */
+  .app{display:grid;grid-template-rows:52px 1fr;height:100vh}
+  .topbar{display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--bg-2);border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
+  .brand .dot{width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+  .topbar .spacer{flex:1}
+  .topbar select,.topbar .btn{height:30px}
+
+  .main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:1fr;overflow:hidden}
+  .pane{overflow-y:auto;padding:14px}
+  .pane.left{background:var(--bg);border-right:1px solid var(--border)}
+  .pane.right{background:var(--bg-2)}
+  .pane::-webkit-scrollbar{width:10px;height:10px}
+  .pane::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:5px}
+  .pane::-webkit-scrollbar-track{background:transparent}
+
+  /* ---------- Buttons ---------- */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;background:var(--bg-3);border:1px solid var(--border);color:var(--text);font-weight:500;transition:.15s}
+  .btn:hover{background:var(--bg-4);border-color:var(--border-2)}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));border-color:transparent;color:#fff;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.1)}
+  .btn.primary:disabled{opacity:.5;cursor:not-allowed}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--text-dim)}
+  .btn.ghost:hover{background:var(--bg-3);color:var(--text)}
+  .btn.sm{padding:4px 8px;font-size:12px}
+  .btn.danger{color:var(--red)}
+  .btn.danger:hover{background:rgba(255,92,92,.12)}
+
+  /* ---------- Sections ---------- */
+  .section{background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px}
+  .section h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .section h3 .hint{color:var(--text-faint);text-transform:none;letter-spacing:0;font-weight:400;font-size:11px}
+
+  /* ---------- Request line ---------- */
+  .req-line{display:flex;gap:8px;align-items:stretch;margin-bottom:12px}
+  .method-sel{width:120px;text-transform:uppercase;font-weight:700;font-family:var(--mono)}
+  .url-input{flex:1;font-family:var(--mono);font-size:12px}
+  .send-btn{padding:0 22px;font-weight:700;font-size:13px}
+
+  /* method colors */
+  .method-GET{color:var(--green)} .method-POST{color:var(--orange)} .method-PUT{color:var(--yellow)}
+  .method-PATCH{color:var(--purple)} .method-DELETE{color:var(--red)} .method-HEAD{color:var(--blue)} .method-OPTIONS{color:var(--text-dim)}
+
+  /* ---------- KV editor ---------- */
+  .kv{display:flex;flex-direction:column;gap:6px}
+  .kv-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) 26px;gap:6px;align-items:center}
+  .kv-row input{padding:5px 8px;font-size:12px;font-family:var(--mono)}
+  .kv-row .del{width:26px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-faint)}
+  .kv-row .del:hover{background:var(--bg-3);color:var(--red)}
+  .kv-add{align-self:flex-start;font-size:12px;color:var(--accent);padding:4px 0}
+  .kv-add:hover{text-decoration:underline}
+  .kv-row.disabled{opacity:.4}
+
+  /* ---------- Auth ---------- */
+  .auth-type{display:flex;gap:0;flex-wrap:wrap;margin-bottom:10px}
+  .auth-type label{flex:1;text-align:center;padding:6px;border:1px solid var(--border);background:var(--bg-3);font-size:11px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500;color:var(--text-dim)}
+  .auth-type label:first-child{border-radius:6px 0 0 6px}
+  .auth-type label:last-child{border-radius:0 6px 6px 0}
+  .auth-type label:not(:last-child){border-right:none}
+  .auth-type input{display:none}
+  .auth-type input:checked+span{color:var(--accent);font-weight:600}
+  .auth-type label:has(input:checked){background:var(--bg-4);color:var(--text)}
+  .auth-fields{display:grid;gap:8px}
+  .field{display:grid;gap:4px}
+
+  /* ---------- Env ---------- */
+  .env-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .env-presets{display:flex;gap:6px;flex-wrap:wrap}
+  .env-chip{padding:5px 10px;border-radius:6px;background:var(--bg-3);border:1px solid var(--border);font-size:11px;font-weight:500}
+  .env-chip:hover{border-color:var(--accent)}
+  .env-chip.active{background:var(--bg-4);border-color:var(--accent);color:var(--accent)}
+
+  /* ---------- Body ---------- */
+  .body-wrap{position:relative}
+  .body-wrap textarea{width:100%;min-height:120px;background:#0a0c11;border-color:var(--border)}
+  .body-status{position:absolute;top:8px;right:10px;font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px}
+  .body-status.ok{background:rgba(62,207,142,.15);color:var(--green)}
+  .body-status.err{background:rgba(255,92,92,.15);color:var(--red)}
+
+  /* ---------- Proxy toggle ---------- */
+  .proxy-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .switch{position:relative;width:34px;height:18px;background:var(--bg-4);border-radius:10px;flex-shrink:0;transition:.15s}
+  .switch::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--text-dim);transition:.15s}
+  .switch.on{background:var(--accent)}
+  .switch.on::after{left:18px;background:#fff}
+  .warn{color:var(--orange);font-size:11px;line-height:1.4}
+
+  /* ---------- Response ---------- */
+  .resp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-faint);text-align:center;gap:8px;padding:20px}
+  .resp-empty svg{opacity:.3}
+  .resp-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .status-badge{font-family:var(--mono);font-weight:700;font-size:13px;padding:4px 10px;border-radius:6px;border:1px solid var(--border)}
+  .status-2xx{background:rgba(62,207,142,.15);color:var(--green);border-color:rgba(62,207,142,.3)}
+  .status-3xx{background:rgba(74,158,255,.15);color:var(--blue);border-color:rgba(74,158,255,.3)}
+  .status-4xx{background:rgba(245,166,35,.15);color:var(--orange);border-color:rgba(245,166,35,.3)}
+  .status-5xx{background:rgba(255,92,92,.15);color:var(--red);border-color:rgba(255,92,92,.3)}
+  .status-err{background:rgba(255,92,92,.15);color:var(--red);border-color:rgba(255,92,92,.3)}
+  .meta-chip{font-size:11px;color:var(--text-dim);font-family:var(--mono)}
+  .resp-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:10px}
+  .resp-tab{padding:6px 14px;font-size:12px;font-weight:500;color:var(--text-dim);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .resp-tab.active{color:var(--text);border-bottom-color:var(--accent)}
+  .resp-tab:hover{color:var(--text)}
+  .resp-body{font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;background:#0a0c11;border:1px solid var(--border);border-radius:6px;padding:12px;max-height:calc(100vh - 280px);overflow:auto}
+  .resp-headers{width:100%;border-collapse:collapse;font-size:12px}
+  .resp-headers td{padding:4px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+  .resp-headers td:first-child{color:var(--text-dim);white-space:nowrap;font-family:var(--mono);width:35%}
+  .resp-headers td:last-child{font-family:var(--mono);word-break:break-all}
+  .resp-body .k{color:var(--blue)} .resp-body .s{color:var(--green)} .resp-body .n{color:var(--purple)} .resp-body .b{color:var(--orange)} .resp-body .null{color:var(--text-faint)}
+
+  /* ---------- History ---------- */
+  .history{max-height:200px;overflow:auto}
+  .hist-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;cursor:pointer}
+  .hist-item:hover{background:var(--bg-3)}
+  .hist-item .m{font-family:var(--mono);font-weight:700;font-size:10px;width:50px;flex-shrink:0}
+  .hist-item .u{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);color:var(--text-dim)}
+  .hist-item .c{font-family:var(--mono);font-size:10px;flex-shrink:0}
+  .hist-empty{color:var(--text-faint);font-size:12px;padding:8px;text-align:center}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg-4);border:1px solid var(--border-2);padding:8px 16px;border-radius:8px;font-size:12px;z-index:100;opacity:0;transition:.2s;pointer-events:none}
+  .toast.show{opacity:1}
+
+  @media(max-width:900px){
+    .main{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
+    .pane.left{border-right:none;border-bottom:1px solid var(--border)}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> API Tester</div>
+    <div class="spacer"></div>
+    <label style="font-size:11px">Environment</label>
+    <select id="envSelect" style="width:200px">
+      <option value="">— custom —</option>
+      <option value="prestmit-sandbox">Prestmit · Sandbox</option>
+      <option value="prestmit-live">Prestmit · Live</option>
+    </select>
+    <button class="btn sm" id="loadExampleBtn">Load example</button>
+    <button class="btn sm" id="copyCurlBtn">Copy as cURL</button>
+  </div>
+
+  <div class="main">
+    <!-- LEFT: request builder -->
+    <div class="pane left">
+      <!-- Request line -->
+      <div class="req-line">
+        <select id="method" class="method-sel method-GET">
+          <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+        </select>
+        <input id="url" class="url-input" placeholder="https://dev-api.prestmit.io/partners/v1/…" spellcheck="false" />
+        <button id="sendBtn" class="btn primary send-btn">Send</button>
+      </div>
+
+      <!-- Environment -->
+      <div class="section">
+        <h3>Environment <span class="hint">— swaps the host prefix of the URL</span></h3>
+        <div class="env-row">
+          <div class="env-presets">
+            <button class="env-chip" data-env="prestmit-sandbox">Prestmit Sandbox<br><span style="font-size:10px;color:var(--text-faint)">dev-api.prestmit.io</span></button>
+            <button class="env-chip" data-env="prestmit-live">Prestmit Live<br><span style="font-size:10px;color:var(--text-faint)">api.prestmit.io</span></button>
+          </div>
+        </div>
+        <div class="warn" style="margin-top:8px">A <code>key_dev_…</code> sandbox key only works against the sandbox host; a live key only against the live host.</div>
+      </div>
+
+      <!-- Auth -->
+      <div class="section">
+        <h3>Authentication <span class="hint">— auto-adds the right header</span></h3>
+        <div class="auth-type">
+          <label><input type="radio" name="auth" value="none" checked><span>None</span></label>
+          <label><input type="radio" name="auth" value="apikey"><span>API Key</span></label>
+          <label><input type="radio" name="auth" value="bearer"><span>Bearer</span></label>
+          <label><input type="radio" name="auth" value="basic"><span>Basic</span></label>
+        </div>
+        <div id="authFields" class="auth-fields"></div>
+      </div>
+
+      <!-- Query params -->
+      <div class="section">
+        <h3>Query Parameters</h3>
+        <div id="queryParams" class="kv"></div>
+        <button class="kv-add" data-target="queryParams">+ Add param</button>
+      </div>
+
+      <!-- Headers -->
+      <div class="section">
+        <h3>Headers <span class="hint">— added on top of Auth</span></h3>
+        <div id="headers" class="kv"></div>
+        <button class="kv-add" data-target="headers">+ Add header</button>
+      </div>
+
+      <!-- Body -->
+      <div class="section" id="bodySection">
+        <h3>Request Body <span class="hint">— JSON, used for POST / PUT / PATCH</span></h3>
+        <div class="body-wrap">
+          <textarea id="body" placeholder='{ "key": "value" }' spellcheck="false"></textarea>
+          <span id="bodyStatus" class="body-status" style="display:none"></span>
+        </div>
+      </div>
+
+      <!-- CORS proxy -->
+      <div class="section">
+        <h3>CORS / Proxy <span class="hint">— for cross-origin APIs that block browser requests</span></h3>
+        <div class="proxy-row">
+          <div class="switch" id="proxySwitch"></div>
+          <span style="font-size:12px">Route request through a CORS proxy</span>
+        </div>
+        <div id="proxyConfig" style="display:none;margin-top:10px">
+          <label>Proxy preset</label>
+          <div class="env-presets" style="margin:6px 0 10px">
+            <button class="env-chip proxy-preset active" data-proxy="http://localhost:8787/?url={url}">Local proxy<br><span style="font-size:10px;color:var(--text-faint)">run cors_proxy.py</span></button>
+            <button class="env-chip proxy-preset" data-proxy="https://corsproxy.io/?url={url}">corsproxy.io<br><span style="font-size:10px;color:var(--text-faint)">third-party, may strip headers</span></button>
+            <button class="env-chip proxy-preset" data-proxy="https://api.allorigins.win/raw?url={url}">allorigins.win<br><span style="font-size:10px;color:var(--text-faint)">third-party</span></button>
+          </div>
+          <div class="field">
+            <label>Proxy URL pattern (use <code>{url}</code> as placeholder)</label>
+            <input id="proxyUrl" value="http://localhost:8787/?url={url}" spellcheck="false" style="font-family:var(--mono);font-size:12px">
+          </div>
+          <div class="warn" style="margin-top:8px">
+            <strong>Recommended:</strong> run the bundled local proxy once — it forwards your headers (including API keys) intact and only on your machine:
+            <code style="display:block;margin-top:6px;padding:8px;background:#0a0c11;border-radius:6px">python3 cors_proxy.py</code>
+            Then keep <strong>Local proxy</strong> selected above. The third-party presets are unauthenticated proxies that often strip custom headers like <code>API-KEY</code>, so authenticated APIs (Prestmit included) will return 401 through them.
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="section">
+        <h3>History <span class="hint">— saved in this browser</span> <button class="btn ghost sm" id="clearHistBtn" style="margin-left:auto">Clear</button></h3>
+        <div id="history" class="history"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: response -->
+    <div class="pane right">
+      <div id="respEmpty" class="resp-empty">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12h16M4 6h16M4 18h10"/></svg>
+        <div style="font-size:14px;font-weight:600;color:var(--text-dim)">No response yet</div>
+        <div style="font-size:12px">Configure a request and hit <strong>Send</strong>.</div>
+      </div>
+      <div id="respPanel" style="display:none">
+        <div class="resp-head">
+          <span id="respStatus" class="status-badge">—</span>
+          <span id="respTime" class="meta-chip"></span>
+          <span id="respSize" class="meta-chip"></span>
+          <div style="flex:1"></div>
+          <button class="btn sm" id="copyRespBtn">Copy body</button>
+          <button class="btn sm" id="copyHeadersBtn">Copy headers</button>
+        </div>
+        <div class="resp-tabs">
+          <div class="resp-tab active" data-tab="body">Body</div>
+          <div class="resp-tab" data-tab="headers">Headers</div>
+          <div class="resp-tab" data-tab="curl">cURL</div>
+        </div>
+        <div id="tab-body" class="resp-tabpane"><div id="respBody" class="resp-body"></div></div>
+        <div id="tab-headers" class="resp-tabpane" style="display:none"><table id="respHeaders" class="resp-headers"></table></div>
+        <div id="tab-curl" class="resp-tabpane" style="display:none"><div id="respCurl" class="resp-body"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- State ---------- */
+const $ = id => document.getElementById(id);
+const ENV_HOSTS = {
+  "prestmit-sandbox":"https://dev-api.prestmit.io/partners/v1",
+  "prestmit-live":"https://api.prestmit.io/partners/v1"
+};
+const EXAMPLE = {
+  method:"GET",
+  url:"https://dev-api.prestmit.io/partners/v1/giftcard-trade/buy/fetch-buyable-giftcards",
+  env:"prestmit-sandbox",
+  auth:{type:"apikey", headerName:"API-KEY", value:"key_dev_SbQulBNhSJdYROZt8o2rylqCErcCXObl"},
+  params:[{k:"perPage",v:"10"},{k:"page",v:"1"}],
+  headers:[{k:"Accept",v:"application/json"}],
+  body:""
+};
+let state = {env:"", proxyOn:false, lastResponse:null};
+
+/* ---------- KV editor ---------- */
+function renderKV(container, rows){
+  container.innerHTML = "";
+  rows.forEach((r,i)=>{
+    const row = document.createElement("div");
+    row.className = "kv-row";
+    const k = document.createElement("input"); k.value=r.k; k.placeholder="key"; k.spellcheck=false;
+    const v = document.createElement("input"); v.value=r.v; v.placeholder="value"; v.spellcheck=false;
+    k.oninput = ()=>{r.k=k.value}; v.oninput = ()=>{r.v=v.value};
+    const del = document.createElement("button"); del.className="del"; del.innerHTML="✕"; del.title="Remove";
+    del.onclick = ()=>{rows.splice(i,1);renderKV(container,rows)};
+    row.append(k,v,del); container.append(row);
+  });
+}
+function addKV(target){
+  const map = {queryParams:stateParams, headers:stateHeaders};
+  map[target].push({k:"",v:""});
+  renderKV($(target), map[target]);
+}
+let stateParams = [];
+let stateHeaders = [];
+
+/* ---------- Auth ---------- */
+function renderAuth(){
+  const type = document.querySelector('input[name="auth"]:checked').value;
+  const f = $("authFields");
+  f.innerHTML = "";
+  stateAuth = stateAuth || {type:"none"};
+  stateAuth.type = type;
+  if(type==="none"){ return; }
+  if(type==="apikey"){
+    f.innerHTML = `
+      <div class="field"><label>Header name</label><input id="akName" value="${stateAuth.headerName||'API-KEY'}" spellcheck="false"></div>
+      <div class="field"><label>API key value</label><input id="akVal" value="${stateAuth.value||''}" spellcheck="false" placeholder="key_dev_…"></div>`;
+    $("akName").oninput=e=>stateAuth.headerName=e.target.value;
+    $("akVal").oninput=e=>stateAuth.value=e.target.value;
+  } else if(type==="bearer"){
+    f.innerHTML = `<div class="field"><label>Token</label><input id="brTok" value="${stateAuth.token||''}" spellcheck="false" placeholder="eyJhbGciOi…"></div>`;
+    $("brTok").oninput=e=>stateAuth.token=e.target.value;
+  } else if(type==="basic"){
+    f.innerHTML = `
+      <div class="field"><label>Username</label><input id="bsUser" value="${stateAuth.user||''}" spellcheck="false"></div>
+      <div class="field"><label>Password</label><input id="bsPass" type="password" value="${stateAuth.pass||''}" spellcheck="false"></div>`;
+    $("bsUser").oninput=e=>stateAuth.user=e.target.value;
+    $("bsPass").oninput=e=>stateAuth.pass=e.target.value;
+  }
+}
+let stateAuth = {type:"none"};
+
+/* ---------- Method color ---------- */
+function updateMethodColor(){
+  const m = $("method");
+  m.className = "method-sel method-"+m.value;
+}
+$("method").addEventListener("change", ()=>{
+  updateMethodColor();
+  const hasBody = ["POST","PUT","PATCH"].includes($("method").value);
+  $("bodySection").style.opacity = hasBody?"1":".5";
+  $("body").disabled = !hasBody;
+});
+
+/* ---------- Body validation ---------- */
+function validateBody(){
+  const t = $("body").value.trim();
+  const s = $("bodyStatus");
+  if(!t){ s.style.display="none"; return null; }
+  s.style.display="block";
+  if(["POST","PUT","PATCH"].includes($("method").value)===false){ /* still validate */ }
+  try{
+    JSON.parse(t);
+    s.textContent="valid JSON"; s.className="body-status ok"; return t;
+  }catch(e){
+    s.textContent="invalid JSON"; s.className="body-status err"; return t; // send raw anyway
+  }
+}
+$("body").addEventListener("input", validateBody);
+
+/* ---------- Build request ---------- */
+function buildRequest(){
+  let url = $("url").value.trim();
+  const params = stateParams.filter(p=>p.k.trim());
+  const q = new URLSearchParams();
+  params.forEach(p=>q.append(p.k.trim(), p.v));
+  const qs = q.toString();
+  if(qs){
+    url += (url.includes("?")?"&":"?")+qs;
+  }
+  // headers
+  const headers = {};
+  stateHeaders.filter(h=>h.k.trim()).forEach(h=>headers[h.k.trim()]=h.v);
+  // auth
+  if(stateAuth.type==="apikey" && stateAuth.headerName && stateAuth.value){
+    headers[stateAuth.headerName] = stateAuth.value;
+  } else if(stateAuth.type==="bearer" && stateAuth.token){
+    headers["Authorization"] = "Bearer "+stateAuth.token;
+  } else if(stateAuth.type==="basic" && (stateAuth.user||stateAuth.pass)){
+    headers["Authorization"] = "Basic "+btoa(stateAuth.user+":"+stateAuth.pass);
+  }
+  const method = $("method").value;
+  const hasBody = ["POST","PUT","PATCH"].includes(method);
+  let body = null;
+  if(hasBody){
+    const b = $("body").value.trim();
+    if(b){ body = b; headers["Content-Type"] = headers["Content-Type"]||"application/json"; }
+  }
+  return {method, url, headers, body};
+}
+
+/* ---------- cURL export ---------- */
+function toCurl(req){
+  let parts = ["curl -X "+req.method];
+  Object.entries(req.headers).forEach(([k,v])=>{
+    parts.push('-H '+shellQuote(k+': '+v));
+  });
+  if(req.body) parts.push('-d '+shellQuote(req.body));
+  parts.push(shellQuote(req.url));
+  return parts.join(" \\\n  ");
+}
+function shellQuote(s){
+  if(!s) return "''";
+  if(/^[\w\-:./?=&%+,#]+$/.test(s)) return "'"+s+"'";
+  return "'"+s.replace(/'/g,"'\\''")+"'";
+}
+
+/* ---------- Send ---------- */
+async function send(){
+  const req = buildRequest();
+  if(!req.url){ toast("Enter a URL first"); return; }
+  if(!/^https?:\/\//.test(req.url)){ toast("URL must start with http:// or https://"); return; }
+  const btn = $("sendBtn"); btn.disabled=true; btn.textContent="Sending…";
+  $("respEmpty").style.display="none";
+  $("respPanel").style.display="block";
+  $("respStatus").textContent="…"; $("respStatus").className="status-badge";
+  $("respBody").textContent="Sending request…";
+  $("respHeaders").innerHTML="";
+
+  let fetchUrl = req.url;
+  const fetchOpts = {method:req.method, headers:req.headers};
+  if(req.body) fetchOpts.body = req.body;
+
+  // For non-simple requests the browser does a CORS preflight; we cannot bypass.
+  // If proxy is on, route through it.
+  if(state.proxyOn){
+    const pat = $("proxyUrl").value || "https://corsproxy.io/?url={url}";
+    fetchUrl = pat.replace("{url}", encodeURIComponent(req.url));
+    // corsproxy.io forwards headers; some proxies need headers as query params.
+    // We keep fetchOpts.headers; most public proxies forward them.
+  }
+
+  const t0 = performance.now();
+  try{
+    const resp = await fetch(fetchUrl, fetchOpts);
+    const text = await resp.text();
+    const dt = Math.round(performance.now()-t0);
+    const respHeaders = [...resp.headers.entries()];
+    renderResponse(resp.status, text, respHeaders, dt, req);
+    saveHistory(req, resp.status, dt);
+  }catch(err){
+    const dt = Math.round(performance.now()-t0);
+    const msg = err && err.message ? err.message : String(err);
+    let hint = "";
+    if(/Failed to fetch|NetworkError|load failed/i.test(msg)){
+      hint = "\n\nLikely causes:\n"+
+        "• CORS: the API did not send Access-Control-Allow-Origin (most likely for Prestmit).\n"+
+        "  → Enable the CORS proxy toggle above, OR use \"Copy as cURL\" to run it in a terminal.\n"+
+        "• Mixed content: page is https but URL is http.\n"+
+        "• Network / DNS / the host is down.\n"+
+        "• The browser blocked a non-allowed header (check the browser console).";
+    }
+    renderError(msg+hint, dt, req);
+    saveHistory(req, "ERR", dt);
+  }finally{
+    btn.disabled=false; btn.textContent="Send";
+  }
+}
+
+/* ---------- Render response ---------- */
+function renderResponse(status, text, respHeaders, dt, req){
+  state.lastResponse = {status, text, respHeaders, dt, req};
+  const badge = $("respStatus");
+  badge.textContent = status+" "+statusText(status);
+  badge.className = "status-badge status-"+statusClass(status);
+  $("respTime").textContent = dt+" ms";
+  $("respSize").textContent = formatBytes(new Blob([text]).size);
+  // body
+  let pretty = text, isJson=false;
+  try{ const j = JSON.parse(text); pretty = JSON.stringify(j, null, 2); isJson=true; }catch(e){}
+  $("respBody").innerHTML = isJson ? highlightJson(pretty) : escapeHtml(pretty);
+  // headers
+  const ht = $("respHeaders"); ht.innerHTML="";
+  if(respHeaders.length===0){
+    ht.innerHTML = '<tr><td colspan="2" style="color:var(--text-faint);text-align:center;padding:12px">' +
+      'No response headers exposed to JavaScript. ' +
+      '(Browsers hide most cross-origin headers when CORS is not granted.)</td></tr>';
+  } else {
+    respHeaders.forEach(([k,v])=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td>'+escapeHtml(k)+'</td><td>'+escapeHtml(v)+'</td>';
+      ht.append(tr);
+    });
+  }
+  // curl
+  $("respCurl").textContent = toCurl(req);
+}
+function renderError(msg, dt, req){
+  state.lastResponse = {status:"ERR", text:msg, respHeaders:[], dt, req};
+  $("respStatus").textContent = "ERROR";
+  $("respStatus").className = "status-badge status-err";
+  $("respTime").textContent = dt+" ms";
+  $("respSize").textContent = "—";
+  $("respBody").textContent = msg;
+  $("respHeaders").innerHTML = "";
+  $("respCurl").textContent = toCurl(req);
+}
+
+/* ---------- JSON highlight ---------- */
+function highlightJson(s){
+  return escapeHtml(s)
+    .replace(/("(?:\\.|[^"\\])*")(\s*:)/g, '<span class="k">$1</span>$2')
+    .replace(/:\s*("(?:\\.|[^"\\])*")/g, ': <span class="s">$1</span>')
+    .replace(/:\s*(-?\d+(?:\.\d+)?)/g, ': <span class="n">$1</span>')
+    .replace(/:\s*(true|false)/g, ': <span class="b">$1</span>')
+    .replace(/:\s*(null)/g, ': <span class="null">$1</span>');
+}
+function escapeHtml(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function statusClass(s){ if(s>=200&&s<300)return"2xx";if(s>=300&&s<400)return"3xx";if(s>=400&&s<500)return"4xx";if(s>=500)return"5xx";return"err"; }
+function statusText(s){ return ({200:"OK",201:"Created",204:"No Content",301:"Moved",302:"Found",304:"Not Modified",400:"Bad Request",401:"Unauthenticated",403:"Forbidden",404:"Not Found",405:"Method Not Allowed",422:"Unprocessable",429:"Too Many Requests",500:"Server Error",502:"Bad Gateway",503:"Service Unavailable",504:"Gateway Timeout"})[s]||""; }
+function formatBytes(n){ if(n<1024)return n+" B"; if(n<1048576)return (n/1024).toFixed(1)+" KB"; return (n/1048576).toFixed(1)+" MB"; }
+
+/* ---------- History ---------- */
+const HKEY = "apitester_history";
+function loadHistory(){ try{return JSON.parse(localStorage.getItem(HKEY)||"[]")}catch(e){return[]} }
+function saveHistory(req, status, dt){
+  const h = loadHistory();
+  h.unshift({method:req.method, url:req.url, status, dt, t:Date.now(),
+             headers:req.headers, body:req.body, auth:stateAuth, params:stateParams, extraHeaders:stateHeaders});
+  if(h.length>30) h.length=30;
+  localStorage.setItem(HKEY, JSON.stringify(h));
+  renderHistory();
+}
+function renderHistory(){
+  const h = loadHistory(); const c = $("history");
+  if(h.length===0){ c.innerHTML='<div class="hist-empty">No saved requests yet.</div>'; return; }
+  c.innerHTML="";
+  h.forEach(item=>{
+    const el = document.createElement("div"); el.className="hist-item";
+    el.innerHTML = `<span class="m method-${item.method}">${item.method}</span><span class="u">${escapeHtml(item.url)}</span><span class="c">${item.status}</span>`;
+    el.onclick = ()=>loadHistoryItem(item);
+    c.append(el);
+  });
+}
+function loadHistoryItem(item){
+  $("method").value = item.method; updateMethodColor();
+  $("url").value = item.url;
+  stateParams = item.params||[]; renderKV($("queryParams"), stateParams);
+  stateHeaders = item.extraHeaders||[]; renderKV($("headers"), stateHeaders);
+  $("body").value = item.body||""; validateBody();
+  stateAuth = item.auth||{type:"none"};
+  const radio = document.querySelector(`input[name="auth"][value="${stateAuth.type}"]`);
+  if(radio) radio.checked = true;
+  renderAuth();
+  $("method").dispatchEvent(new Event("change"));
+  toast("Loaded from history");
+}
+
+/* ---------- Environment swap ---------- */
+function applyEnv(env){
+  state.env = env;
+  $("envSelect").value = env;
+  document.querySelectorAll(".env-chip").forEach(c=>c.classList.toggle("active", c.dataset.env===env));
+  if(env && ENV_HOSTS[env]){
+    // replace a known prestmit host prefix in the current URL, or prepend if URL is just a path
+    let url = $("url").value.trim();
+    const knownHosts = Object.values(ENV_HOSTS);
+    let replaced = false;
+    for(const h of knownHosts){
+      if(url.startsWith(h)){ url = ENV_HOSTS[env] + url.slice(h.length); replaced=true; break; }
+    }
+    if(!replaced){
+      if(url.startsWith("/")) url = ENV_HOSTS[env] + url;
+      else if(!url) url = ENV_HOSTS[env] + "/giftcard-trade/buy/fetch-buyable-giftcards";
+    }
+    $("url").value = url;
+  }
+}
+
+/* ---------- Example ---------- */
+function loadExample(){
+  $("method").value = EXAMPLE.method; updateMethodColor();
+  stateAuth = JSON.parse(JSON.stringify(EXAMPLE.auth));
+  const radio = document.querySelector(`input[name="auth"][value="${stateAuth.type}"]`);
+  if(radio) radio.checked=true; renderAuth();
+  stateParams = JSON.parse(JSON.stringify(EXAMPLE.params)); renderKV($("queryParams"), stateParams);
+  stateHeaders = JSON.parse(JSON.stringify(EXAMPLE.headers)); renderKV($("headers"), stateHeaders);
+  $("body").value = EXAMPLE.body; validateBody();
+  applyEnv(EXAMPLE.env);
+  $("url").value = EXAMPLE.url;
+  $("method").dispatchEvent(new Event("change"));
+  toast("Example loaded — press Send");
+}
+
+/* ---------- Toast ---------- */
+let toastTimer;
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(()=>t.classList.remove("show"), 1800);
+}
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll(".resp-tab").forEach(tab=>{
+  tab.onclick = ()=>{
+    document.querySelectorAll(".resp-tab").forEach(t=>t.classList.remove("active"));
+    tab.classList.add("active");
+    document.querySelectorAll(".resp-tabpane").forEach(p=>p.style.display="none");
+    $("tab-"+tab.dataset.tab).style.display = "block";
+  };
+});
+
+/* ---------- Copy buttons ---------- */
+function copyText(s){ navigator.clipboard.writeText(s).then(()=>toast("Copied to clipboard")); }
+$("copyRespBtn").onclick = ()=>{ if(state.lastResponse) copyText(state.lastResponse.text); };
+$("copyHeadersBtn").onclick = ()=>{ if(state.lastResponse) copyText(state.lastResponse.respHeaders.map(([k,v])=>k+": "+v).join("\n")); };
+$("copyCurlBtn").onclick = ()=>{ copyText(toCurl(buildRequest())); };
+
+/* ---------- Proxy switch ---------- */
+$("proxySwitch").onclick = ()=>{
+  state.proxyOn = !state.proxyOn;
+  $("proxySwitch").classList.toggle("on", state.proxyOn);
+  $("proxyConfig").style.display = state.proxyOn ? "block":"none";
+};
+document.querySelectorAll(".proxy-preset").forEach(c=>c.onclick=()=>{
+  document.querySelectorAll(".proxy-preset").forEach(x=>x.classList.remove("active"));
+  c.classList.add("active");
+  $("proxyUrl").value = c.dataset.proxy;
+});
+
+/* ---------- Wiring ---------- */
+document.querySelectorAll(".kv-add").forEach(b=>b.onclick=()=>addKV(b.dataset.target));
+document.querySelectorAll('input[name="auth"]').forEach(r=>r.onchange=renderAuth);
+document.querySelectorAll(".env-chip").forEach(c=>c.onclick=()=>applyEnv(c.dataset.env));
+$("envSelect").onchange = e=>applyEnv(e.target.value);
+$("sendBtn").onclick = send;
+$("clearHistBtn").onclick = ()=>{ localStorage.removeItem(HKEY); renderHistory(); toast("History cleared"); };
+$("loadExampleBtn").onclick = loadExample;
+$("url").addEventListener("keydown", e=>{ if(e.key==="Enter"){ send(); } });
+
+/* ---------- Init ---------- */
+updateMethodColor();
+renderAuth();
+renderKV($("queryParams"), stateParams);
+renderKV($("headers"), stateHeaders);
+renderHistory();
+loadExample();
+</script>
+</body>
+</html>
